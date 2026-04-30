@@ -72,6 +72,7 @@
   var authSegmentedHead = document.getElementById("auth-segmented-head");
   var logoutBtn = document.getElementById("account-logout");
   var changeNickBtn = document.getElementById("account-change-nick");
+  var cabinetUserTag = document.getElementById("cabinet-user-tag");
   var changePasswordBtn = document.getElementById("account-change-password");
   var changeNickModal = document.getElementById("cabinet-change-nick-modal");
   var changeNickForm = document.getElementById("cabinet-change-nick-form");
@@ -96,6 +97,10 @@
   var lastMe = null;
   var skinBlobUrls = [];
   var skinThumbBySlot = [];
+  var refreshInFlight = null;
+  var refreshBlockedUntil = 0;
+  var REFRESH_RETRY_COOLDOWN_MS = 5000;
+  var pendingHashAfterRelogin = "";
 
   if (
     !modal ||
@@ -133,7 +138,34 @@
     else mgSiteSessRemove(MG_USER);
   }
 
-  async function tryRefresh() {
+  function isAdminPage() {
+    try {
+      return /\/panel\.html$/i.test(String(window.location.pathname || ""));
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function rememberHashForRelogin() {
+    if (isAdminPage()) return;
+    try {
+      pendingHashAfterRelogin = String(window.location.hash || "");
+    } catch (e) {
+      pendingHashAfterRelogin = "";
+    }
+  }
+
+  function restoreHashAfterRelogin() {
+    if (isAdminPage()) return;
+    if (!pendingHashAfterRelogin) return;
+    try {
+      window.location.hash = pendingHashAfterRelogin;
+    } catch (e) {}
+    pendingHashAfterRelogin = "";
+  }
+
+  async function doRefreshOnce() {
+    if (Date.now() < refreshBlockedUntil) return false;
     var rt = mgSiteSessGet(MG_REFRESH);
     if (!rt) return false;
     var r = await fetch(API_BASE + "/auth/refresh", {
@@ -143,12 +175,23 @@
       credentials: "include",
     });
     if (!r.ok) {
+      refreshBlockedUntil = Date.now() + REFRESH_RETRY_COOLDOWN_MS;
       clearTokens();
       return false;
     }
     var data = await r.json();
     setTokens(data.accessToken, data.refreshToken || rt, data.user && data.user.username);
+    refreshBlockedUntil = 0;
+    restoreHashAfterRelogin();
     return true;
+  }
+
+  async function tryRefresh() {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = doRefreshOnce().finally(function () {
+      refreshInFlight = null;
+    });
+    return refreshInFlight;
   }
 
   async function apiFetch(method, pathname, opts) {
@@ -169,6 +212,7 @@
     });
 
     if (r.status === 401 && !skipAuth && pathname !== "/auth/refresh" && !opts._retried) {
+      rememberHashForRelogin();
       var ok = await tryRefresh();
       if (ok) return apiFetch(method, pathname, Object.assign({}, opts, { _retried: true }));
     }
@@ -419,6 +463,21 @@
     return r.json();
   }
 
+  async function fetchUserTag(username) {
+    var u = String(username || "").trim().toLowerCase();
+    if (!u) return { label: "Player", bgColor: "#8b5cf6", textColor: "#f8fafc" };
+    var r = await apiFetch("GET", "/user-tags/" + encodeURIComponent(u));
+    if (!r.ok) return { label: "Player", bgColor: "#8b5cf6", textColor: "#f8fafc" };
+    var d = await r.json().catch(function () {
+      return {};
+    });
+    return {
+      label: d && d.label ? String(d.label) : "Player",
+      bgColor: d && d.bgColor ? String(d.bgColor) : "#8b5cf6",
+      textColor: d && d.textColor ? String(d.textColor) : "#f8fafc",
+    };
+  }
+
   async function showCabinet() {
     var nick = getSession();
     if (!nick) {
@@ -441,6 +500,14 @@
     modalTitle.textContent = "Личный кабинет";
     modalTitle.classList.remove("visually-hidden");
     cabinetNick.textContent = lastMe.username;
+    if (cabinetUserTag) {
+      var tg = await fetchUserTag(lastMe.username).catch(function () {
+        return { label: "Player", bgColor: "#8b5cf6", textColor: "#f8fafc" };
+      });
+      cabinetUserTag.textContent = tg.label || "Player";
+      cabinetUserTag.style.background = tg.bgColor || "#8b5cf6";
+      cabinetUserTag.style.color = tg.textColor || "#f8fafc";
+    }
     if (cabinetAdminTag) {
       var isAdmin = Boolean(lastMe.isAdmin);
       cabinetAdminTag.hidden = !isAdmin;

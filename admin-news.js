@@ -11,6 +11,7 @@
   var shotModePanel = document.getElementById("admin-mode-screenshots");
   var serverModePanel = document.getElementById("admin-mode-servers");
   var launcherModePanel = document.getElementById("admin-mode-launcher");
+  var usersModePanel = document.getElementById("admin-mode-users");
 
   var form = document.getElementById("news-form");
   var formTitle = document.getElementById("form-title");
@@ -93,6 +94,22 @@
   var lmPersonalReceiptsBtn = document.getElementById("lm-personal-receipts-btn");
   var lmPersonalDeleteBtn = document.getElementById("lm-personal-delete-btn");
   var lmPersonalReceiptsOut = document.getElementById("lm-personal-receipts-out");
+  var adminUsersList = document.getElementById("admin-users-list");
+  var adminUsersMsg = document.getElementById("admin-users-msg");
+  var adminUserProfileEmpty = document.getElementById("admin-user-profile-empty");
+  var adminUserProfileForm = document.getElementById("admin-user-profile-form");
+  var adminUserProfileMsg = document.getElementById("admin-user-profile-msg");
+  var adminUserUsername = document.getElementById("admin-user-username");
+  var adminUserDisplay = document.getElementById("admin-user-display");
+  var adminUserTagLabel = document.getElementById("admin-user-tag-label");
+  var adminUserTagBg = document.getElementById("admin-user-tag-bg");
+  var adminUserTagText = document.getElementById("admin-user-tag-text");
+  var adminUserTagSaveBtn = document.getElementById("admin-user-tag-save");
+  var adminUserTagDeleteBtn = document.getElementById("admin-user-tag-delete");
+  var adminUserTagResetColorsBtn = document.getElementById("admin-user-tag-reset-colors");
+  var adminUserActiveSlot = document.getElementById("admin-user-active-slot");
+  var adminUserClearSlots = document.getElementById("admin-user-clear-slots");
+  var adminUserSkinsSaveBtn = document.getElementById("admin-user-skins-save");
 
   var mediaRoot = document.getElementById("admin-media-root");
   var mediaPark = document.getElementById("admin-media-park");
@@ -117,6 +134,8 @@
 
   var mediaItems = [];
   var newsCache = [];
+  var adminUsersCache = [];
+  var adminSelectedUser = "";
   var previewIndex = 0;
   var bodyPreviewTimer = null;
 
@@ -722,6 +741,8 @@
           escapeHtml(String(item.order || 0)) +
           " · " +
           escapeHtml(item.isVisible ? "виден" : "скрыт") +
+          '</div><div class="meta">image=' +
+          escapeHtml(item.imageMode === "default" ? "default" : (item.imageUrl || "")) +
           "</div>" +
           (item.mcHost || item.mcPort
             ? '<div class="meta">' +
@@ -1132,15 +1153,105 @@
     }
   }
 
+  function setAdminUsersMsg(text, isError) {
+    if (!adminUsersMsg) return;
+    adminUsersMsg.textContent = text || "";
+    adminUsersMsg.style.color = isError ? "#f87171" : "";
+  }
+
+  function setAdminUserProfileMsg(text, isError) {
+    if (!adminUserProfileMsg) return;
+    adminUserProfileMsg.textContent = text || "";
+    adminUserProfileMsg.style.color = isError ? "#f87171" : "";
+  }
+
+  function parseSlotsCsv(raw) {
+    return String(raw || "")
+      .split(",")
+      .map(function (x) {
+        return Number(String(x || "").trim());
+      })
+      .filter(function (n) {
+        return Number.isInteger(n) && n >= 0 && n <= 5;
+      });
+  }
+
+  async function loadAdminUsersList() {
+    if (!adminUsersList) return;
+    setAdminUsersMsg("");
+    adminUsersList.innerHTML = "";
+    try {
+      var rows = await apiJson("GET", "/admin/users");
+      adminUsersCache = Array.isArray(rows) ? rows : [];
+      if (!adminUsersCache.length) {
+        adminUsersList.innerHTML = "<li>Нет пользователей</li>";
+        return;
+      }
+      adminUsersCache.forEach(function (u) {
+        var li = document.createElement("li");
+        var left = document.createElement("div");
+        left.innerHTML =
+          "<strong>" +
+          escapeHtml(u.usernameDisplay || u.username || "") +
+          '</strong><div class="meta">username=' +
+          escapeHtml(u.username || "") +
+          " · model=" +
+          escapeHtml(u.model || "steve") +
+          " · skins=" +
+          escapeHtml(String(u.filledSkins || 0)) +
+          "</div>";
+        var actions = document.createElement("div");
+        actions.style.display = "flex";
+        actions.style.gap = "8px";
+        var openBtn = document.createElement("button");
+        openBtn.type = "button";
+        openBtn.className = "btn btn--ghost";
+        openBtn.textContent = "Открыть";
+        openBtn.addEventListener("click", function () {
+          void loadAdminUserProfile(u.username);
+        });
+        actions.appendChild(openBtn);
+        li.appendChild(left);
+        li.appendChild(actions);
+        adminUsersList.appendChild(li);
+      });
+    } catch (e) {
+      setAdminUsersMsg(e.message || String(e), true);
+    }
+  }
+
+  async function loadAdminUserProfile(username) {
+    var uname = String(username || "").trim().toLowerCase();
+    if (!uname) return;
+    setAdminUserProfileMsg("");
+    try {
+      var d = await apiJson("GET", "/admin/users/" + encodeURIComponent(uname));
+      adminSelectedUser = String(d.username || uname).toLowerCase();
+      if (adminUserProfileEmpty) adminUserProfileEmpty.hidden = true;
+      if (adminUserProfileForm) adminUserProfileForm.hidden = false;
+      if (adminUserUsername) adminUserUsername.value = d.username || "";
+      if (adminUserDisplay) adminUserDisplay.value = d.usernameDisplay || "";
+      if (adminUserTagLabel) adminUserTagLabel.value = (d.tag && d.tag.label) || "Player";
+      if (adminUserTagBg) adminUserTagBg.value = (d.tag && d.tag.bgColor) || "#8b5cf6";
+      if (adminUserTagText) adminUserTagText.value = (d.tag && d.tag.textColor) || "#f8fafc";
+      if (adminUserActiveSlot) adminUserActiveSlot.value = Number(d.activeSkinSlot || 0);
+      if (adminUserClearSlots) adminUserClearSlots.value = "";
+    } catch (e) {
+      setAdminUserProfileMsg(e.message || String(e), true);
+    }
+  }
+
   function switchMode(mode) {
     var isNews = mode === "news";
     var isScreenshots = mode === "screenshots";
     var isServers = mode === "servers";
     var isLauncher = mode === "launcher";
+    var isUsers = mode === "users";
     if (newsModePanel) newsModePanel.hidden = !isNews;
     if (shotModePanel) shotModePanel.hidden = !isScreenshots;
     if (serverModePanel) serverModePanel.hidden = !isServers;
     if (launcherModePanel) launcherModePanel.hidden = !isLauncher;
+    if (usersModePanel) usersModePanel.hidden = !isUsers;
     if (isNews) placeMediaHost("news");
     else if (isScreenshots) placeMediaHost("screenshots");
     else placeMediaHost("servers");
@@ -1158,6 +1269,8 @@
     if (isLauncher) {
       void loadLauncherRelease();
       void loadLauncherMessagesAdmin();
+    } else if (isUsers) {
+      void loadAdminUsersList();
     }
   }
 
@@ -1347,6 +1460,59 @@
   if (launcherDefaultServerEnabled) {
     launcherDefaultServerEnabled.addEventListener("change", syncLauncherDefaultServerFields);
   }
+  if (adminUserTagResetColorsBtn) {
+    adminUserTagResetColorsBtn.addEventListener("click", function () {
+      if (adminUserTagBg) adminUserTagBg.value = "#8b5cf6";
+      if (adminUserTagText) adminUserTagText.value = "#f8fafc";
+    });
+  }
+  if (adminUserTagSaveBtn) {
+    adminUserTagSaveBtn.addEventListener("click", async function () {
+      if (!adminSelectedUser) return;
+      setAdminUserProfileMsg("");
+      try {
+        await apiJson("PUT", "/admin/user-tags/" + encodeURIComponent(adminSelectedUser), {
+          label: adminUserTagLabel ? adminUserTagLabel.value.trim() : "Player",
+          bgColor: adminUserTagBg ? adminUserTagBg.value : "#8b5cf6",
+          textColor: adminUserTagText ? adminUserTagText.value : "#f8fafc",
+        });
+        setAdminUserProfileMsg("Тег сохранён.");
+      } catch (e) {
+        setAdminUserProfileMsg(e.message || String(e), true);
+      }
+    });
+  }
+  if (adminUserTagDeleteBtn) {
+    adminUserTagDeleteBtn.addEventListener("click", async function () {
+      if (!adminSelectedUser) return;
+      setAdminUserProfileMsg("");
+      try {
+        await apiJson("DELETE", "/admin/user-tags/" + encodeURIComponent(adminSelectedUser));
+        if (adminUserTagLabel) adminUserTagLabel.value = "Player";
+        if (adminUserTagBg) adminUserTagBg.value = "#8b5cf6";
+        if (adminUserTagText) adminUserTagText.value = "#f8fafc";
+        setAdminUserProfileMsg("Тег удалён, возвращён fallback.");
+      } catch (e) {
+        setAdminUserProfileMsg(e.message || String(e), true);
+      }
+    });
+  }
+  if (adminUserSkinsSaveBtn) {
+    adminUserSkinsSaveBtn.addEventListener("click", async function () {
+      if (!adminSelectedUser) return;
+      setAdminUserProfileMsg("");
+      try {
+        await apiJson("PATCH", "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skin-slots", {
+          activeSkinSlot: adminUserActiveSlot ? Number(adminUserActiveSlot.value) : 0,
+          clearSlots: parseSlotsCsv(adminUserClearSlots ? adminUserClearSlots.value : ""),
+        });
+        setAdminUserProfileMsg("Skin slots обновлены.");
+        await loadAdminUserProfile(adminSelectedUser);
+      } catch (e) {
+        setAdminUserProfileMsg(e.message || String(e), true);
+      }
+    });
+  }
   launcherForm.addEventListener("submit", async function (e) {
     e.preventDefault();
     setLauncherMsg("");
@@ -1517,8 +1683,9 @@
     if (serverImage.files && serverImage.files[0]) {
       fd.append("image", serverImage.files[0]);
     } else if (!isEdit) {
-      setServerFormMsg("Добавьте изображение.", true);
-      return;
+      var useDefaultImage = confirm("Картинка не выбрана. Использовать дефолтную?");
+      if (!useDefaultImage) return;
+      fd.append("imageMode", "default");
     }
     var url = isEdit
       ? API_BASE.replace(/\/$/, "") + "/admin/servers/" + encodeURIComponent(serverEditId.value)

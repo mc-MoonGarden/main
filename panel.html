@@ -466,6 +466,7 @@
             <button type="button" class="btn btn--ghost" data-admin-mode-btn="screenshots">Скриншоты</button>
             <button type="button" class="btn btn--ghost" data-admin-mode-btn="servers">Серверы</button>
             <button type="button" class="btn btn--ghost" data-admin-mode-btn="launcher">Лаунчер</button>
+            <button type="button" class="btn btn--ghost" data-admin-mode-btn="users">Пользователи</button>
           </div>
           <a
             class="btn btn--ghost admin-panel-close"
@@ -933,6 +934,63 @@
                 <p class="admin-msg" id="lm-personal-msg" role="status"></p>
               </form>
               <pre id="lm-personal-receipts-out" class="admin-lm-json" hidden></pre>
+            </div>
+          </div>
+
+          <div id="admin-mode-users" class="admin-mode-panel admin-news-grid" hidden>
+            <div class="admin-panel">
+              <h2>Пользователи</h2>
+              <ul class="admin-list" id="admin-users-list"></ul>
+              <p class="admin-msg" id="admin-users-msg" role="status"></p>
+            </div>
+            <div class="admin-panel">
+              <h2>Профиль пользователя</h2>
+              <div id="admin-user-profile-empty" class="admin-hint">Выберите пользователя из списка слева.</div>
+              <form id="admin-user-profile-form" hidden>
+                <label class="admin-field">
+                  <span>Username</span>
+                  <input id="admin-user-username" type="text" readonly />
+                </label>
+                <label class="admin-field">
+                  <span>Display name</span>
+                  <input id="admin-user-display" type="text" readonly />
+                </label>
+                <fieldset class="admin-field admin-field--group">
+                  <legend>Кастомный тег</legend>
+                  <label class="admin-field">
+                    <span>Текст тега</span>
+                    <input id="admin-user-tag-label" type="text" maxlength="24" />
+                  </label>
+                  <label class="admin-field">
+                    <span>Цвет фона</span>
+                    <input id="admin-user-tag-bg" type="color" value="#8b5cf6" />
+                  </label>
+                  <label class="admin-field">
+                    <span>Цвет текста</span>
+                    <input id="admin-user-tag-text" type="color" value="#f8fafc" />
+                  </label>
+                  <div class="admin-actions">
+                    <button type="button" class="btn btn--ghost" id="admin-user-tag-reset-colors">Сбросить цвета</button>
+                    <button type="button" class="btn btn--ghost" id="admin-user-tag-delete">Удалить тег</button>
+                    <button type="button" class="btn btn--primary" id="admin-user-tag-save">Сохранить тег</button>
+                  </div>
+                </fieldset>
+                <fieldset class="admin-field admin-field--group">
+                  <legend>Skin slots</legend>
+                  <label class="admin-field">
+                    <span>Активный слот (0-5)</span>
+                    <input id="admin-user-active-slot" type="number" min="0" max="5" value="0" />
+                  </label>
+                  <label class="admin-field">
+                    <span>Очистить слоты (через запятую, например 1,3)</span>
+                    <input id="admin-user-clear-slots" type="text" placeholder="1,3" />
+                  </label>
+                  <div class="admin-actions">
+                    <button type="button" class="btn btn--primary" id="admin-user-skins-save">Сохранить skin slots</button>
+                  </div>
+                </fieldset>
+                <p class="admin-msg" id="admin-user-profile-msg" role="status"></p>
+              </form>
             </div>
           </div>
         </div>

@@ -1337,6 +1337,19 @@ body.site-modal-open {
   min-width: 138px;
 }
 
+.cabinet-user-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  min-width: 138px;
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
 .cabinet-inline-label {
   color: var(--text-muted);
   font-size: 14px;
@@ -1828,7 +1841,7 @@ body.site-modal-open {
 .site-footer {
   position: relative;
   z-index: 3;
-  margin-top: 8px;
+  margin-bottom: 8px;
   padding: 0 24px 32px;
   max-width: 1200px;
   margin-left: auto;
@@ -2084,8 +2097,7 @@ body.site-modal-open {
   .site-footer {
     padding-left: 12px;
     padding-right: 12px;
-    /* Базовые 32px как у .site-footer + safe-area. */
-    padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 32px;
   }
 
   .server-card-inner {
