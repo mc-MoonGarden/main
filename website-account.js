@@ -465,16 +465,18 @@
 
   async function fetchUserTag(username) {
     var u = String(username || "").trim().toLowerCase();
-    if (!u) return { label: "Player", bgColor: "#8b5cf6", textColor: "#f8fafc" };
+    if (!u) return { label: "Player", bgColor: "#100e22bd", textColor: "#ebe4ff", borderColor: "#ffffff14" };
     var r = await apiFetch("GET", "/user-tags/" + encodeURIComponent(u));
-    if (!r.ok) return { label: "Player", bgColor: "#8b5cf6", textColor: "#f8fafc" };
+    if (!r.ok) return { label: "Player", bgColor: "#100e22bd", textColor: "#ebe4ff", borderColor: "#ffffff14" };
     var d = await r.json().catch(function () {
       return {};
     });
     return {
       label: d && d.label ? String(d.label) : "Player",
-      bgColor: d && d.bgColor ? String(d.bgColor) : "#8b5cf6",
-      textColor: d && d.textColor ? String(d.textColor) : "#f8fafc",
+      bgColor: d && d.bgColor ? String(d.bgColor) : "#100e22bd",
+      textColor: d && d.textColor ? String(d.textColor) : "#ebe4ff",
+      borderColor: d && d.borderColor ? String(d.borderColor) : "#ffffff14",
+      isDefault: !!(d && d.isDefault),
     };
   }
 
@@ -502,11 +504,21 @@
     cabinetNick.textContent = lastMe.username;
     if (cabinetUserTag) {
       var tg = await fetchUserTag(lastMe.username).catch(function () {
-        return { label: "Player", bgColor: "#8b5cf6", textColor: "#f8fafc" };
+        return { label: "Player", bgColor: "#100e22bd", textColor: "#ebe4ff", borderColor: "#ffffff14", isDefault: true };
       });
+      if (tg.isDefault) {
+        var headerBtn = document.getElementById("header-auth-btn");
+        if (headerBtn && window.getComputedStyle) {
+          var cs = window.getComputedStyle(headerBtn);
+          tg.bgColor = cs.backgroundColor || tg.bgColor;
+          tg.textColor = cs.color || tg.textColor;
+          tg.borderColor = cs.borderColor || tg.borderColor;
+        }
+      }
       cabinetUserTag.textContent = tg.label || "Player";
-      cabinetUserTag.style.background = tg.bgColor || "#8b5cf6";
-      cabinetUserTag.style.color = tg.textColor || "#f8fafc";
+      cabinetUserTag.style.background = tg.bgColor || "#100e22bd";
+      cabinetUserTag.style.color = tg.textColor || "#ebe4ff";
+      cabinetUserTag.style.borderColor = tg.borderColor || "#ffffff14";
     }
     if (cabinetAdminTag) {
       var isAdmin = Boolean(lastMe.isAdmin);

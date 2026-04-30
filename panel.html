@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>MoonGarden — Админка контента</title>
+    <link rel="icon" type="image/png" href="site/product.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -199,7 +200,7 @@
         display: flex;
         flex-direction: column;
         gap: 10px;
-        max-height: 420px;
+        max-height: 920px;
         overflow: auto;
       }
       .admin-list li {
@@ -651,9 +652,17 @@
                   <span>Теги (`server-tagline`) — вводите через запятую или «•»</span>
                   <input id="server-tagline" name="tagline" type="text" required placeholder="Magic, Tech, Exploration" />
                 </label>
-                <label class="admin-field" for="server-meta1">
-                  <span>Метаданные 1 (dd: Версия)</span>
-                  <input id="server-meta1" name="meta1" type="text" required />
+                <label class="admin-field" for="server-mc-version">
+                  <span>Версия Minecraft (пойдёт в `data-server-card-meta1` и в запуск)</span>
+                  <input id="server-mc-version" name="minecraftVersion" type="text" required placeholder="1.21.1" />
+                </label>
+                <label class="admin-field" for="server-loader-version">
+                  <span>Версия загрузчика (скрыто в клиенте, используется для запуска)</span>
+                  <input id="server-loader-version" name="loaderVersion" type="text" required placeholder="21.1.226" />
+                </label>
+                <label class="admin-field" for="server-loader-type">
+                  <span>Тип загрузчика (например neoforge/forge/fabric/quilt)</span>
+                  <input id="server-loader-type" name="loaderType" type="text" required placeholder="neoforge" />
                 </label>
                 <label class="admin-field" for="server-meta2">
                   <span>Метаданные 2 (dd: Сборка)</span>
@@ -958,16 +967,24 @@
                 <fieldset class="admin-field admin-field--group">
                   <legend>Кастомный тег</legend>
                   <label class="admin-field">
+                    <span>Превью</span>
+                    <span class="cabinet-user-tag" id="admin-user-tag-preview">Player</span>
+                  </label>
+                  <label class="admin-field">
                     <span>Текст тега</span>
                     <input id="admin-user-tag-label" type="text" maxlength="24" />
                   </label>
                   <label class="admin-field">
-                    <span>Цвет фона</span>
-                    <input id="admin-user-tag-bg" type="color" value="#8b5cf6" />
+                    <span>Цвет фона (HEX, #RRGGBB или #RRGGBBAA)</span>
+                    <input id="admin-user-tag-bg" type="text" value="#100e22bd" placeholder="#100e22bd" />
                   </label>
                   <label class="admin-field">
-                    <span>Цвет текста</span>
-                    <input id="admin-user-tag-text" type="color" value="#f8fafc" />
+                    <span>Цвет текста (HEX, #RRGGBB или #RRGGBBAA)</span>
+                    <input id="admin-user-tag-text" type="text" value="#ebe4ff" placeholder="#ebe4ff" />
+                  </label>
+                  <label class="admin-field">
+                    <span>Цвет бордера (HEX, #RRGGBB или #RRGGBBAA)</span>
+                    <input id="admin-user-tag-border" type="text" value="#ffffff14" placeholder="#ffffff14" />
                   </label>
                   <div class="admin-actions">
                     <button type="button" class="btn btn--ghost" id="admin-user-tag-reset-colors">Сбросить цвета</button>
@@ -977,14 +994,7 @@
                 </fieldset>
                 <fieldset class="admin-field admin-field--group">
                   <legend>Skin slots</legend>
-                  <label class="admin-field">
-                    <span>Активный слот (0-5)</span>
-                    <input id="admin-user-active-slot" type="number" min="0" max="5" value="0" />
-                  </label>
-                  <label class="admin-field">
-                    <span>Очистить слоты (через запятую, например 1,3)</span>
-                    <input id="admin-user-clear-slots" type="text" placeholder="1,3" />
-                  </label>
+                  <div class="skin-options skin-options--admin" id="admin-user-skin-grid"></div>
                   <div class="admin-actions">
                     <button type="button" class="btn btn--primary" id="admin-user-skins-save">Сохранить skin slots</button>
                   </div>
@@ -1024,6 +1034,6 @@
       </div>
     </div>
     <script src="api-config.js?v=1"></script>
-    <script src="admin-news.js?v=20260490"></script>
+    <script src="panel.js?v=20260491"></script>
   </body>
 </html>

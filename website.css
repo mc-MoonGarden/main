@@ -1608,6 +1608,25 @@ body.site-modal-open {
   font-weight: 600;
 }
 
+.skin-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.skin-options--admin .skin-option {
+  min-height: 98px;
+  padding: 8px;
+}
+
+.skin-options--admin .skin-option__preview {
+  height: 52px;
+}
+
+.skin-options--admin .skin-option__label {
+  font-size: 11px;
+}
+
 .skin-option:hover {
   border-color: rgba(167, 139, 250, 0.4);
 }
