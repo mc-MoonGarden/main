@@ -2,6 +2,10 @@
   var API_BASE =
     (typeof window.__MG_API_BASE__ === "string" && window.__MG_API_BASE__) || "http://localhost:3000";
   var MG_ACCESS = "mg_access";
+  var MG_REFRESH = "mg_refresh";
+  var refreshInFlight = null;
+  var refreshBlockedUntil = 0;
+  var REFRESH_RETRY_COOLDOWN_MS = 5000;
 
   var denied = document.getElementById("admin-denied");
   var app = document.getElementById("admin-app");
@@ -59,6 +63,7 @@
   var serverLoaderType = document.getElementById("server-loader-type");
   var serverMeta2 = document.getElementById("server-meta2");
   var serverMeta3 = document.getElementById("server-meta3");
+  var serverMeta3TimeFormat = document.getElementById("server-meta3-time-format");
   var serverMcHost = document.getElementById("server-mc-host");
   var serverMcPort = document.getElementById("server-mc-port");
   var serverClientZipUrl = document.getElementById("server-client-zip-url");
@@ -204,6 +209,75 @@
     }
   }
 
+  async function tryRefreshOnce() {
+    if (Date.now() < refreshBlockedUntil) return false;
+    var rt = "";
+    try {
+      rt = localStorage.getItem(MG_REFRESH) || sessionStorage.getItem(MG_REFRESH) || "";
+    } catch (e0) {}
+    if (!rt) return false;
+    var r = await fetch(API_BASE.replace(/\/$/, "") + "/auth/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: rt }),
+      credentials: "include",
+    });
+    if (!r.ok) {
+      refreshBlockedUntil = Date.now() + REFRESH_RETRY_COOLDOWN_MS;
+      try {
+        localStorage.removeItem(MG_ACCESS);
+        localStorage.removeItem(MG_REFRESH);
+        sessionStorage.removeItem(MG_ACCESS);
+        sessionStorage.removeItem(MG_REFRESH);
+      } catch (e1) {}
+      return false;
+    }
+    var data = await r.json().catch(function () {
+      return {};
+    });
+    if (data.accessToken) {
+      try {
+        localStorage.setItem(MG_ACCESS, data.accessToken);
+        sessionStorage.setItem(MG_ACCESS, data.accessToken);
+      } catch (e2) {}
+    }
+    if (data.refreshToken) {
+      try {
+        localStorage.setItem(MG_REFRESH, data.refreshToken);
+        sessionStorage.setItem(MG_REFRESH, data.refreshToken);
+      } catch (e3) {}
+    }
+    refreshBlockedUntil = 0;
+    return true;
+  }
+
+  async function tryRefresh() {
+    if (refreshInFlight) return refreshInFlight;
+    refreshInFlight = tryRefreshOnce().finally(function () {
+      refreshInFlight = null;
+    });
+    return refreshInFlight;
+  }
+
+  /** Повтор при 401: access живёт ~1 ч, refresh — дольше; без этого админка «отваливается», хотя сессия ещё валидна. */
+  async function fetchWithAuth(url, init, retried) {
+    init = init || {};
+    var headers = Object.assign({}, init.headers);
+    var t = token();
+    if (t) headers["Authorization"] = "Bearer " + t;
+    var r = await fetch(url, Object.assign({}, init, { headers: headers, credentials: "include" }));
+    if (r.status === 401 && !retried) {
+      var ok = await tryRefresh();
+      if (ok) {
+        headers = Object.assign({}, init.headers);
+        t = token();
+        if (t) headers["Authorization"] = "Bearer " + t;
+        return fetch(url, Object.assign({}, init, { headers: headers, credentials: "include" }));
+      }
+    }
+    return r;
+  }
+
   function bindAdminPicker(opts) {
     var hidden = opts.hidden;
     var trigger = opts.trigger;
@@ -326,13 +400,13 @@
   });
 
   async function apiJson(method, path, bodyObj) {
-    var headers = { Authorization: "Bearer " + token() };
-    var opts = { method: method, headers: headers };
+    var headers = {};
+    var opts = { method: method, headers: headers, credentials: "include" };
     if (bodyObj !== undefined) {
-      opts.headers["Content-Type"] = "application/json";
+      headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(bodyObj);
     }
-    var r = await fetch(API_BASE.replace(/\/$/, "") + path, opts);
+    var r = await fetchWithAuth(API_BASE.replace(/\/$/, "") + path, opts);
     var data = await r.json().catch(function () {
       return {};
     });
@@ -341,11 +415,10 @@
   }
 
   async function checkAdmin() {
+    if (!token()) await tryRefresh();
     var t = token();
     if (!t) return false;
-    var r = await fetch(API_BASE.replace(/\/$/, "") + "/me", {
-      headers: { Authorization: "Bearer " + t },
-    });
+    var r = await fetchWithAuth(API_BASE.replace(/\/$/, "") + "/me", { method: "GET" });
     if (!r.ok) return false;
     var data = await r.json();
     return Boolean(data.isAdmin);
@@ -354,9 +427,7 @@
   async function setAdminHintFromMe() {
     if (!adminHint) return;
     try {
-      var r = await fetch(API_BASE.replace(/\/$/, "") + "/me", {
-        headers: { Authorization: "Bearer " + token() },
-      });
+      var r = await fetchWithAuth(API_BASE.replace(/\/$/, "") + "/me", { method: "GET" });
       if (!r.ok) return;
       var data = await r.json();
       var u = data.username ? String(data.username) : "";
@@ -564,6 +635,7 @@
     if (serverLoaderType) serverLoaderType.value = "";
     serverMeta2.value = "";
     serverMeta3.value = "";
+    if (serverMeta3TimeFormat) serverMeta3TimeFormat.value = "days";
     if (serverMcHost) serverMcHost.value = "";
     if (serverMcPort) serverMcPort.value = "";
     var delM = document.getElementById("server-client-delivery-manifest");
@@ -985,6 +1057,10 @@
     }
     serverMeta2.value = item.meta2 || "";
     serverMeta3.value = item.meta3 || "";
+    if (serverMeta3TimeFormat) {
+      var tf = item.meta3TimeFormat === "hours" || item.meta3TimeFormat === "date" || item.meta3TimeFormat === "datetime" ? item.meta3TimeFormat : "days";
+      serverMeta3TimeFormat.value = tf;
+    }
     if (serverMcHost) serverMcHost.value = typeof item.mcHost === "string" ? item.mcHost : "";
     if (serverMcPort) {
       serverMcPort.value =
@@ -1278,14 +1354,12 @@
       return;
     }
     var base = API_BASE.replace(/\/$/, "");
-    var auth = token();
     for (var si = 0; si < 6; si++) {
       var slot = adminSkinSlots[si];
       if (!slot || !slot.filled) continue;
-      var r = await fetch(
-        base + "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skins/" + si,
-        { headers: { Authorization: "Bearer " + auth } }
-      );
+      var r = await fetchWithAuth(base + "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skins/" + si, {
+        method: "GET",
+      });
       if (!r.ok) continue;
       var bl = await r.blob();
       var u = URL.createObjectURL(bl);
@@ -1476,9 +1550,9 @@
             var di = Number(downloadBtn.getAttribute("data-slot-download"));
             if (!adminSelectedUser || !Number.isInteger(di)) return;
             var base = API_BASE.replace(/\/$/, "");
-            var r = await fetch(
+            var r = await fetchWithAuth(
               base + "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skins/" + di,
-              { headers: { Authorization: "Bearer " + token() } }
+              { method: "GET" }
             );
             if (!r.ok) return;
             var bl = await r.blob();
@@ -1800,9 +1874,8 @@
       try {
         var fd = new FormData();
         fd.append("file", mediaUploadInput.files[0]);
-        var r = await fetch(API_BASE.replace(/\/$/, "") + "/admin/media", {
+        var r = await fetchWithAuth(API_BASE.replace(/\/$/, "") + "/admin/media", {
           method: "POST",
-          headers: { Authorization: "Bearer " + token() },
           body: fd,
         });
         var data = await r.json().catch(function () {
@@ -1919,13 +1992,13 @@
       setAdminUserProfileMsg("");
       var fd = new FormData();
       fd.append("file", file, file.name || "skin.png");
-      var r = await fetch(
+      var r = await fetchWithAuth(
         API_BASE.replace(/\/$/, "") +
           "/admin/users/" +
           encodeURIComponent(adminSelectedUser) +
           "/skins/" +
           adminPendingUploadSlot,
-        { method: "POST", headers: { Authorization: "Bearer " + token() }, body: fd }
+        { method: "POST", body: fd }
       );
       var data = await r.json().catch(function () {
         return {};
@@ -1974,13 +2047,13 @@
       if (countFilledAdminSkins() <= 1) return;
       if (!confirm("Удалить скин из слота " + (adminSelectedSkinSlot + 1) + "?")) return;
       setAdminUserProfileMsg("");
-      var r = await fetch(
+      var r = await fetchWithAuth(
         API_BASE.replace(/\/$/, "") +
           "/admin/users/" +
           encodeURIComponent(adminSelectedUser) +
           "/skins/" +
           adminSelectedSkinSlot,
-        { method: "DELETE", headers: { Authorization: "Bearer " + token() } }
+        { method: "DELETE" }
       );
       var data = await r.json().catch(function () {
         return {};
@@ -2163,6 +2236,7 @@
     fd.append("loaderType", loaderTypeVal);
     fd.append("meta2", serverMeta2.value.trim());
     fd.append("meta3", serverMeta3.value.trim());
+    if (serverMeta3TimeFormat) fd.append("meta3TimeFormat", serverMeta3TimeFormat.value || "days");
     if (serverMcHost) fd.append("mcHost", serverMcHost.value.trim());
     if (serverMcPort) fd.append("mcPort", String(serverMcPort.value || "").trim());
     var deliveryRadio = document.querySelector('input[name="clientDelivery"]:checked');
@@ -2189,9 +2263,8 @@
       : API_BASE.replace(/\/$/, "") + "/admin/servers";
     var method = isEdit ? "PUT" : "POST";
     try {
-      var r = await fetch(url, {
+      var r = await fetchWithAuth(url, {
         method: method,
-        headers: { Authorization: "Bearer " + token() },
         body: fd,
       });
       var data = await r.json().catch(function () {

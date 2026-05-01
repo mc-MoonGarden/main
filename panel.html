@@ -709,6 +709,15 @@
                   <span>Метаданные 3 (dd: Последний запуск)</span>
                   <input id="server-meta3" name="meta3" type="text" required />
                 </label>
+                <label class="admin-field" for="server-meta3-time-format">
+                  <span>Формат «Последний запуск» в лаунчере (по времени пинга с API)</span>
+                  <select id="server-meta3-time-format" name="meta3TimeFormat">
+                    <option value="days">Дни (Сегодня, Вчера, N дней назад)</option>
+                    <option value="hours">Часы (N часов назад)</option>
+                    <option value="date">Только дата (23 августа)</option>
+                    <option value="datetime">Дата и время (23 авг 22:21)</option>
+                  </select>
+                </label>
                 <label class="admin-field" for="server-mc-host">
                   <span>IP сервера (host)</span>
                   <input id="server-mc-host" name="mcHost" type="text" placeholder="play.example.com" autocomplete="off" />
