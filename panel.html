@@ -11,7 +11,7 @@
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="website.css?v=20260486" />
+    <link rel="stylesheet" href="website.css?v=20260502" />
     <style>
       .site-root {
         height: 100vh;
@@ -175,6 +175,43 @@
       .admin-field textarea {
         min-height: 120px;
         resize: vertical;
+      }
+      .admin-field--color-row .admin-color-inputs {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+      }
+      .admin-field--color-row .admin-color-inputs input[type="text"] {
+        flex: 1;
+        min-width: 0;
+      }
+      .admin-field--color-row input[type="color"] {
+        flex-shrink: 0;
+        width: 42px;
+        height: 36px;
+        padding: 0;
+        border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+        border-radius: 50%;
+        cursor: pointer;
+        background: transparent;
+      }
+      .admin-user-skin-layout {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      .admin-user-skin-layout .skin-preview {
+        flex: 0 0 auto;
+      }
+      .admin-user-skin-main {
+        flex: 1 1 260px;
+        min-width: 0;
+      }
+      .admin-user-skin-hint {
+        margin-top: 0;
+        margin-bottom: 12px;
       }
       .admin-actions {
         display: flex;
@@ -680,6 +717,51 @@
                   <span>Порт сервера</span>
                   <input id="server-mc-port" name="mcPort" type="number" min="1" max="65535" placeholder="25565" />
                 </label>
+                <fieldset class="admin-field" style="border: 0; padding: 0; margin: 0">
+                  <span class="admin-field-label">Доставка клиента в лаунчер</span>
+                  <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px">
+                    <label class="mg-check admin-field--check" for="server-client-delivery-manifest">
+                      <input
+                        id="server-client-delivery-manifest"
+                        name="clientDelivery"
+                        type="radio"
+                        value="manifest"
+                        checked
+                      />
+                      <span>Манифест (список файлов, как раньше)</span>
+                    </label>
+                    <label class="mg-check admin-field--check" for="server-client-delivery-zip">
+                      <input id="server-client-delivery-zip" name="clientDelivery" type="radio" value="zip" />
+                      <span>Один ZIP (например GitHub Release) → файлы прямо в каталоге профиля <code>moongarden-…</code></span>
+                    </label>
+                  </div>
+                </fieldset>
+                <label class="admin-field" for="server-client-zip-url">
+                  <span>URL архива ZIP (только при доставке ZIP)</span>
+                  <input
+                    id="server-client-zip-url"
+                    name="clientZipUrl"
+                    type="url"
+                    placeholder="https://github.com/.../releases/download/.../moongarden-epic.zip"
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="admin-field" for="server-client-zip-sha256">
+                  <span>SHA-256 всего ZIP (опционально, для проверки после скачивания)</span>
+                  <input
+                    id="server-client-zip-sha256"
+                    name="clientZipSha256"
+                    type="text"
+                    maxlength="64"
+                    placeholder="64 hex-символа"
+                    spellcheck="false"
+                    autocomplete="off"
+                  />
+                </label>
+                <label class="mg-check admin-field--check" for="server-use-manifest-fallback">
+                  <input id="server-use-manifest-fallback" name="useManifestFallback" type="checkbox" />
+                  <span>После ZIP — синхронизация по манифесту (докачка / патч). Если выключено, манифест не используется.</span>
+                </label>
                 <label class="admin-field" for="server-manifest-url">
                   <span>URL манифеста клиента для этой карточки</span>
                   <input id="server-manifest-url" name="manifestUrl" type="url" placeholder="https://..." autocomplete="off" />
@@ -974,17 +1056,26 @@
                     <span>Текст тега</span>
                     <input id="admin-user-tag-label" type="text" maxlength="24" />
                   </label>
-                  <label class="admin-field">
+                  <label class="admin-field admin-field--color-row">
                     <span>Цвет фона (HEX, #RRGGBB или #RRGGBBAA)</span>
-                    <input id="admin-user-tag-bg" type="text" value="#100e22bd" placeholder="#100e22bd" />
+                    <span class="admin-color-inputs">
+                      <input id="admin-user-tag-bg" type="text" value="#100e22bd" placeholder="#100e22bd" />
+                      <input id="admin-user-tag-bg-picker" type="color" value="#100e22" aria-label="Палитра: цвет фона" />
+                    </span>
                   </label>
-                  <label class="admin-field">
+                  <label class="admin-field admin-field--color-row">
                     <span>Цвет текста (HEX, #RRGGBB или #RRGGBBAA)</span>
-                    <input id="admin-user-tag-text" type="text" value="#ebe4ff" placeholder="#ebe4ff" />
+                    <span class="admin-color-inputs">
+                      <input id="admin-user-tag-text" type="text" value="#ebe4ff" placeholder="#ebe4ff" />
+                      <input id="admin-user-tag-text-picker" type="color" value="#ebe4ff" aria-label="Палитра: цвет текста" />
+                    </span>
                   </label>
-                  <label class="admin-field">
+                  <label class="admin-field admin-field--color-row">
                     <span>Цвет бордера (HEX, #RRGGBB или #RRGGBBAA)</span>
-                    <input id="admin-user-tag-border" type="text" value="#ffffff14" placeholder="#ffffff14" />
+                    <span class="admin-color-inputs">
+                      <input id="admin-user-tag-border" type="text" value="#ffffff14" placeholder="#ffffff14" />
+                      <input id="admin-user-tag-border-picker" type="color" value="#ffffff" aria-label="Палитра: цвет бордера" />
+                    </span>
                   </label>
                   <div class="admin-actions">
                     <button type="button" class="btn btn--ghost" id="admin-user-tag-reset-colors">Сбросить цвета</button>
@@ -994,9 +1085,30 @@
                 </fieldset>
                 <fieldset class="admin-field admin-field--group">
                   <legend>Skin slots</legend>
-                  <div class="skin-options skin-options--admin" id="admin-user-skin-grid"></div>
-                  <div class="admin-actions">
-                    <button type="button" class="btn btn--primary" id="admin-user-skins-save">Сохранить skin slots</button>
+                  <div class="admin-user-skin-layout">
+                    <div class="skin-preview skin-preview--mc" id="admin-user-skin-preview">
+                      <div class="skin-preview__checker" aria-hidden="true"></div>
+                      <div class="skin-preview__figure-wrap skin-preview__figure-wrap--3d">
+                        <canvas class="skin-preview__canvas" id="admin-user-skin-canvas" width="220" height="300"></canvas>
+                      </div>
+                      <span class="skin-preview__caption" id="admin-user-skin-caption"></span>
+                    </div>
+                    <div class="admin-user-skin-main">
+                      <p class="skin-preview__hint admin-user-skin-hint">
+                        Как в личном кабинете: пустой слот — загрузить PNG; занятый — предпросмотр, применить как активный,
+                        заменить или удалить.
+                      </p>
+                      <fieldset class="skin-grid">
+                        <legend class="visually-hidden">Слоты скинов</legend>
+                        <div class="skin-grid__inner skin-options skin-options--admin" id="admin-user-skin-grid"></div>
+                        <input class="visually-hidden" id="admin-user-skin-upload" type="file" accept="image/png" />
+                        <div class="skin-slot-actions" id="admin-user-skin-actions" hidden>
+                          <button type="button" class="btn btn--primary" id="admin-user-skin-apply">Применить</button>
+                          <button type="button" class="btn btn--ghost" id="admin-user-skin-replace">Заменить</button>
+                          <button type="button" class="btn btn--ghost" id="admin-user-skin-remove">Удалить</button>
+                        </div>
+                      </fieldset>
+                    </div>
                   </div>
                 </fieldset>
                 <p class="admin-msg" id="admin-user-profile-msg" role="status"></p>
@@ -1033,7 +1145,8 @@
         </div>
       </div>
     </div>
+    <script src="https://unpkg.com/skinview3d@3.2.0/bundles/skinview3d.bundle.js"></script>
     <script src="api-config.js?v=1"></script>
-    <script src="panel.js?v=20260491"></script>
+    <script src="panel.js?v=20260502"></script>
   </body>
 </html>

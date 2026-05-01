@@ -61,6 +61,9 @@
   var serverMeta3 = document.getElementById("server-meta3");
   var serverMcHost = document.getElementById("server-mc-host");
   var serverMcPort = document.getElementById("server-mc-port");
+  var serverClientZipUrl = document.getElementById("server-client-zip-url");
+  var serverClientZipSha256 = document.getElementById("server-client-zip-sha256");
+  var serverUseManifestFallback = document.getElementById("server-use-manifest-fallback");
   var serverManifestUrl = document.getElementById("server-manifest-url");
   var serverManifestMirrors = document.getElementById("server-manifest-mirrors");
   var serverSyncStrict = document.getElementById("server-sync-strict");
@@ -108,11 +111,20 @@
   var adminUserTagBg = document.getElementById("admin-user-tag-bg");
   var adminUserTagText = document.getElementById("admin-user-tag-text");
   var adminUserTagBorder = document.getElementById("admin-user-tag-border");
+  var adminUserTagBgPicker = document.getElementById("admin-user-tag-bg-picker");
+  var adminUserTagTextPicker = document.getElementById("admin-user-tag-text-picker");
+  var adminUserTagBorderPicker = document.getElementById("admin-user-tag-border-picker");
   var adminUserTagSaveBtn = document.getElementById("admin-user-tag-save");
   var adminUserTagDeleteBtn = document.getElementById("admin-user-tag-delete");
   var adminUserTagResetColorsBtn = document.getElementById("admin-user-tag-reset-colors");
   var adminUserSkinGrid = document.getElementById("admin-user-skin-grid");
-  var adminUserSkinsSaveBtn = document.getElementById("admin-user-skins-save");
+  var adminUserSkinCanvas = document.getElementById("admin-user-skin-canvas");
+  var adminUserSkinCaption = document.getElementById("admin-user-skin-caption");
+  var adminUserSkinUpload = document.getElementById("admin-user-skin-upload");
+  var adminUserSkinActions = document.getElementById("admin-user-skin-actions");
+  var adminUserSkinApplyBtn = document.getElementById("admin-user-skin-apply");
+  var adminUserSkinReplaceBtn = document.getElementById("admin-user-skin-replace");
+  var adminUserSkinRemoveBtn = document.getElementById("admin-user-skin-remove");
 
   var mediaRoot = document.getElementById("admin-media-root");
   var mediaPark = document.getElementById("admin-media-park");
@@ -139,9 +151,16 @@
   var newsCache = [];
   var adminUsersCache = [];
   var adminSelectedUser = "";
-  var adminPendingActiveSkinSlot = 0;
-  var adminPendingClearSlots = {};
   var adminSkinSlots = [];
+  var adminUserModelForSkin = "steve";
+  var adminServerActiveSlot = 0;
+  var adminSelectedSkinSlot = 0;
+  var adminSkinThumbBySlot = [];
+  var adminSkinBlobUrls = [];
+  var adminSkinViewer = null;
+  var adminDefaultSkinDataUrl = null;
+  var adminPendingUploadSlot = -1;
+  var MAX_ADMIN_SKIN_BYTES = 2 * 1024 * 1024;
   var previewIndex = 0;
   var bodyPreviewTimer = null;
   var ADMIN_DEFAULT_TAG = {
@@ -547,6 +566,13 @@
     serverMeta3.value = "";
     if (serverMcHost) serverMcHost.value = "";
     if (serverMcPort) serverMcPort.value = "";
+    var delM = document.getElementById("server-client-delivery-manifest");
+    var delZ = document.getElementById("server-client-delivery-zip");
+    if (delM) delM.checked = true;
+    if (delZ) delZ.checked = false;
+    if (serverClientZipUrl) serverClientZipUrl.value = "";
+    if (serverClientZipSha256) serverClientZipSha256.value = "";
+    if (serverUseManifestFallback) serverUseManifestFallback.checked = false;
     if (serverManifestUrl) serverManifestUrl.value = "";
     if (serverManifestMirrors) serverManifestMirrors.value = "";
     if (serverSyncStrict) serverSyncStrict.checked = false;
@@ -964,6 +990,14 @@
       serverMcPort.value =
         item.mcPort != null && Number.isFinite(Number(item.mcPort)) ? String(item.mcPort) : "";
     }
+    var delivery = item.clientDelivery === "zip" ? "zip" : "manifest";
+    var delM2 = document.getElementById("server-client-delivery-manifest");
+    var delZ2 = document.getElementById("server-client-delivery-zip");
+    if (delM2) delM2.checked = delivery !== "zip";
+    if (delZ2) delZ2.checked = delivery === "zip";
+    if (serverClientZipUrl) serverClientZipUrl.value = item.clientZipUrl || "";
+    if (serverClientZipSha256) serverClientZipSha256.value = item.clientZipSha256 || "";
+    if (serverUseManifestFallback) serverUseManifestFallback.checked = item.useManifestFallback === true;
     if (serverManifestUrl) serverManifestUrl.value = item.manifestUrl || "";
     if (serverManifestMirrors) {
       var mirrors = Array.isArray(item.manifestMirrors) ? item.manifestMirrors : [];
@@ -1192,6 +1226,208 @@
     return /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/.test(s) ? s : fallback;
   }
 
+  function hexForColorPicker(hex, fallback) {
+    var s = normalizeTagColor(hex, fallback || "#000000");
+    return s.length === 9 ? s.substring(0, 7) : s;
+  }
+
+  function syncAdminTagPickerFromText(textInput, pickerInput) {
+    if (!textInput || !pickerInput) return;
+    var fb =
+      textInput.id === "admin-user-tag-bg"
+        ? ADMIN_DEFAULT_TAG.bgColor
+        : textInput.id === "admin-user-tag-text"
+          ? ADMIN_DEFAULT_TAG.textColor
+          : ADMIN_DEFAULT_TAG.borderColor;
+    pickerInput.value = hexForColorPicker(textInput.value, fb);
+  }
+
+  function syncAllAdminTagPickersFromText() {
+    syncAdminTagPickerFromText(adminUserTagBg, adminUserTagBgPicker);
+    syncAdminTagPickerFromText(adminUserTagText, adminUserTagTextPicker);
+    syncAdminTagPickerFromText(adminUserTagBorder, adminUserTagBorderPicker);
+  }
+
+  function applyAdminTagPickerToText(textInput, picker) {
+    if (!textInput || !picker) return;
+    var hex6 = picker.value || "#000000";
+    var prev = String(textInput.value || "").trim().toLowerCase();
+    if (/^#[0-9a-f]{8}$/.test(prev)) {
+      textInput.value = hex6 + prev.substring(7);
+    } else {
+      textInput.value = hex6;
+    }
+    updateAdminUserTagPreview();
+  }
+
+  function revokeAdminSkinBlobs() {
+    for (var bi = 0; bi < adminSkinBlobUrls.length; bi++) {
+      try {
+        URL.revokeObjectURL(adminSkinBlobUrls[bi]);
+      } catch (e) {}
+    }
+    adminSkinBlobUrls = [];
+    adminSkinThumbBySlot = [];
+  }
+
+  async function loadAdminSkinThumbs() {
+    revokeAdminSkinBlobs();
+    var urls = new Array(6).fill(null);
+    if (!adminSelectedUser || !adminSkinSlots.length) {
+      adminSkinThumbBySlot = urls;
+      return;
+    }
+    var base = API_BASE.replace(/\/$/, "");
+    var auth = token();
+    for (var si = 0; si < 6; si++) {
+      var slot = adminSkinSlots[si];
+      if (!slot || !slot.filled) continue;
+      var r = await fetch(
+        base + "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skins/" + si,
+        { headers: { Authorization: "Bearer " + auth } }
+      );
+      if (!r.ok) continue;
+      var bl = await r.blob();
+      var u = URL.createObjectURL(bl);
+      urls[si] = u;
+      adminSkinBlobUrls.push(u);
+    }
+    adminSkinThumbBySlot = urls;
+  }
+
+  function getAdminDefaultSkinDataUrl() {
+    if (adminDefaultSkinDataUrl) return adminDefaultSkinDataUrl;
+    var canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 64;
+    var ctx = canvas.getContext("2d");
+    if (!ctx) return "";
+    ctx.fillStyle = "#2a2438";
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = "#3a3250";
+    for (var y = 0; y < 64; y += 8) {
+      for (var x = 0; x < 64; x += 8) {
+        if (((x + y) / 8) % 2 === 0) ctx.fillRect(x, y, 8, 8);
+      }
+    }
+    adminDefaultSkinDataUrl = canvas.toDataURL("image/png");
+    return adminDefaultSkinDataUrl;
+  }
+
+  function ensureAdminSkinViewer() {
+    if (adminSkinViewer || !adminUserSkinCanvas || !window.skinview3d) return;
+    adminSkinViewer = new window.skinview3d.SkinViewer({
+      canvas: adminUserSkinCanvas,
+      width: adminUserSkinCanvas.width,
+      height: adminUserSkinCanvas.height,
+    });
+    adminSkinViewer.zoom = 0.95;
+    adminSkinViewer.fov = 70;
+    adminSkinViewer.animation = new window.skinview3d.IdleAnimation();
+    safeLoadAdminSkin(getAdminDefaultSkinDataUrl(), "default");
+  }
+
+  function safeLoadAdminSkin(skinSrc, modelType) {
+    if (!adminSkinViewer) return;
+    try {
+      var result = adminSkinViewer.loadSkin(skinSrc, { model: modelType });
+      if (result && typeof result.then === "function") {
+        result.catch(function () {
+          if (skinSrc !== getAdminDefaultSkinDataUrl()) safeLoadAdminSkin(getAdminDefaultSkinDataUrl(), modelType);
+        });
+      }
+    } catch (err) {
+      if (skinSrc !== getAdminDefaultSkinDataUrl()) safeLoadAdminSkin(getAdminDefaultSkinDataUrl(), modelType);
+    }
+  }
+
+  function applyAdminSkinPreview(optPreviewIndex) {
+    ensureAdminSkinViewer();
+    if (!adminUserSkinCaption) return;
+    var modelType = adminUserModelForSkin === "alex" ? "slim" : "default";
+    var hasPreview = typeof optPreviewIndex === "number" && optPreviewIndex >= 0;
+    var visibleIndex = hasPreview ? optPreviewIndex : adminServerActiveSlot;
+    var labelPrefix =
+      hasPreview && visibleIndex !== adminServerActiveSlot ? "Предпросмотр слота: " : "Активный слот: ";
+    var label = labelPrefix;
+    var src = null;
+    var slotMeta = visibleIndex >= 0 && visibleIndex < 6 ? adminSkinSlots[visibleIndex] : null;
+    var slotHasSkin = slotMeta && slotMeta.filled;
+    if (visibleIndex >= 0 && adminSkinThumbBySlot[visibleIndex]) {
+      src = adminSkinThumbBySlot[visibleIndex];
+      label += "№" + (visibleIndex + 1);
+    } else if (visibleIndex >= 0 && slotHasSkin) {
+      label += "№" + (visibleIndex + 1);
+      src = getAdminDefaultSkinDataUrl();
+    } else if (visibleIndex >= 0 && !slotHasSkin) {
+      label += "№" + (visibleIndex + 1) + " (пусто)";
+      src = getAdminDefaultSkinDataUrl();
+    } else if (adminSelectedUser) {
+      src = API_BASE.replace(/\/$/, "") + "/skins/" + encodeURIComponent(adminSelectedUser) + ".png";
+      label += visibleIndex >= 0 ? "№" + (visibleIndex + 1) : "публичный";
+    } else {
+      label += "не выбран";
+      src = getAdminDefaultSkinDataUrl();
+    }
+    adminUserSkinCaption.textContent = label;
+    safeLoadAdminSkin(src, modelType);
+  }
+
+  function countFilledAdminSkins() {
+    if (!adminSkinSlots.length) return 0;
+    var n = 0;
+    for (var ci = 0; ci < adminSkinSlots.length; ci++) {
+      if (adminSkinSlots[ci] && adminSkinSlots[ci].filled) n++;
+    }
+    return n;
+  }
+
+  function syncAdminSkinActionButtons() {
+    if (!adminUserSkinActions) return;
+    var slot = adminSkinSlots[adminSelectedSkinSlot];
+    var hasSelected = adminSelectedSkinSlot >= 0 && slot && slot.filled;
+    adminUserSkinActions.hidden = !hasSelected;
+    if (adminUserSkinRemoveBtn) {
+      var fc = countFilledAdminSkins();
+      adminUserSkinRemoveBtn.disabled = fc <= 1;
+      adminUserSkinRemoveBtn.title = fc <= 1 ? "Нельзя удалить последний скин" : "Удалить скин из слота";
+    }
+  }
+
+  function validateAdminSkinImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (!file) {
+        reject("Файл не выбран.");
+        return;
+      }
+      if (file.type !== "image/png") {
+        reject("Скин должен быть PNG.");
+        return;
+      }
+      if (file.size > MAX_ADMIN_SKIN_BYTES) {
+        reject("Скин слишком большой. Максимум 2 MB.");
+        return;
+      }
+      var objectUrl = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth;
+        var h = img.naturalHeight;
+        URL.revokeObjectURL(objectUrl);
+        if (!((w === 64 && h === 64) || (w === 64 && h === 32))) {
+          reject("Неверный размер скина. Поддерживается только 64x64 или 64x32.");
+          return;
+        }
+        resolve(true);
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(objectUrl);
+        reject("Не удалось прочитать PNG как скин Minecraft.");
+      };
+      img.src = objectUrl;
+    });
+  }
+
   function updateAdminUserTagPreview() {
     if (!adminUserTagPreview) return;
     var label = (adminUserTagLabel && adminUserTagLabel.value.trim()) || ADMIN_DEFAULT_TAG.label;
@@ -1209,33 +1445,89 @@
     adminUserSkinGrid.innerHTML = "";
     for (var i = 0; i < 6; i++) {
       var slot = adminSkinSlots[i] || { slot: i, filled: false, filename: null };
+      var filled = Boolean(slot && slot.filled);
       var btn = document.createElement("button");
+      var isSelected = i === adminSelectedSkinSlot;
+      var isActive = i === adminServerActiveSlot;
       btn.type = "button";
-      btn.className = "skin-option" + (adminPendingActiveSkinSlot === i ? " is-active" : "");
-      if (adminPendingClearSlots[i]) btn.classList.add("is-selected");
-      btn.setAttribute("data-slot", String(i));
-      btn.innerHTML =
-        '<div class="skin-option__preview"><span class="skin-option__placeholder">' +
-        (slot.filled ? "Skin" : "Empty") +
-        "</span></div>" +
-        '<div class="skin-option__label">Слот ' +
-        String(i + 1) +
-        " · " +
-        (slot.filled ? "заполнен" : "пустой") +
-        "</div>";
-      btn.addEventListener("click", function (e) {
-        var idx = Number(e.currentTarget.getAttribute("data-slot"));
-        if (!Number.isInteger(idx) || idx < 0 || idx > 5) return;
-        adminPendingActiveSkinSlot = idx;
-        renderAdminUserSkinGrid();
-      });
-      btn.addEventListener("contextmenu", function (e) {
-        e.preventDefault();
-        var idx = Number(e.currentTarget.getAttribute("data-slot"));
-        if (!Number.isInteger(idx) || idx < 0 || idx > 5) return;
-        adminPendingClearSlots[idx] = !adminPendingClearSlots[idx];
-        renderAdminUserSkinGrid();
-      });
+      btn.className =
+        "skin-option" + (isSelected ? " is-selected" : "") + (isActive ? " is-active" : "");
+      btn.setAttribute("data-slot-index", String(i));
+      btn.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      var preview = document.createElement("span");
+      preview.className = "skin-option__preview";
+      preview.setAttribute("aria-hidden", "true");
+      if (filled && adminSkinThumbBySlot[i]) {
+        var img = document.createElement("img");
+        img.src = adminSkinThumbBySlot[i];
+        img.alt = "";
+        preview.appendChild(img);
+        var downloadBtn = document.createElement("button");
+        downloadBtn.type = "button";
+        downloadBtn.className = "skin-option__download";
+        downloadBtn.setAttribute("data-slot-download", String(i));
+        downloadBtn.setAttribute("aria-label", "Скачать скин из слота " + (i + 1));
+        downloadBtn.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12" stroke-linecap="round"/><path d="M7 11l5 5 5-5" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 21h14" stroke-linecap="round"/></svg>';
+        downloadBtn.addEventListener("click", function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          void (async function () {
+            var di = Number(downloadBtn.getAttribute("data-slot-download"));
+            if (!adminSelectedUser || !Number.isInteger(di)) return;
+            var base = API_BASE.replace(/\/$/, "");
+            var r = await fetch(
+              base + "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skins/" + di,
+              { headers: { Authorization: "Bearer " + token() } }
+            );
+            if (!r.ok) return;
+            var bl = await r.blob();
+            var link = document.createElement("a");
+            link.href = URL.createObjectURL(bl);
+            link.download = "skin-slot-" + (di + 1) + ".png";
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(function () {
+              try {
+                URL.revokeObjectURL(link.href);
+              } catch (e2) {}
+            }, 2000);
+          })();
+        });
+        btn.appendChild(downloadBtn);
+      } else {
+        var placeholder = document.createElement("span");
+        placeholder.className = "skin-option__placeholder";
+        placeholder.textContent = "Пусто";
+        preview.appendChild(placeholder);
+      }
+      var lab = document.createElement("span");
+      lab.className = "skin-option__label";
+      lab.textContent = "Слот " + (i + 1) + (isActive ? " (активный)" : "");
+      btn.appendChild(preview);
+      btn.appendChild(lab);
+      (function (idx) {
+        btn.addEventListener("click", function (e) {
+          if (e.target.closest("[data-slot-download]")) return;
+          adminSelectedSkinSlot = idx;
+          var sl = adminSkinSlots[idx];
+          if (!sl || !sl.filled) {
+            adminPendingUploadSlot = idx;
+            if (adminUserSkinUpload) {
+              adminUserSkinUpload.value = "";
+              adminUserSkinUpload.click();
+            }
+            renderAdminUserSkinGrid();
+            syncAdminSkinActionButtons();
+            applyAdminSkinPreview();
+            return;
+          }
+          renderAdminUserSkinGrid();
+          syncAdminSkinActionButtons();
+          applyAdminSkinPreview(idx);
+        });
+      })(i);
       adminUserSkinGrid.appendChild(btn);
     }
   }
@@ -1299,12 +1591,18 @@
       if (adminUserTagBg) adminUserTagBg.value = (d.tag && d.tag.bgColor) || ADMIN_DEFAULT_TAG.bgColor;
       if (adminUserTagText) adminUserTagText.value = (d.tag && d.tag.textColor) || ADMIN_DEFAULT_TAG.textColor;
       if (adminUserTagBorder) adminUserTagBorder.value = (d.tag && d.tag.borderColor) || ADMIN_DEFAULT_TAG.borderColor;
-      adminPendingActiveSkinSlot = Number(d.activeSkinSlot || 0);
-      adminPendingClearSlots = {};
+      adminUserModelForSkin = d.model === "alex" ? "alex" : "steve";
+      adminServerActiveSlot = Number(d.activeSkinSlot || 0);
+      adminSelectedSkinSlot = adminServerActiveSlot;
       adminSkinSlots = Array.isArray(d.skinSlots) ? d.skinSlots.slice(0, 6) : [];
       updateAdminUserTagPreview();
+      syncAllAdminTagPickersFromText();
+      await loadAdminSkinThumbs();
       renderAdminUserSkinGrid();
+      applyAdminSkinPreview();
+      syncAdminSkinActionButtons();
     } catch (e) {
+      revokeAdminSkinBlobs();
       setAdminUserProfileMsg(e.message || String(e), true);
     }
   }
@@ -1533,14 +1831,40 @@
       if (adminUserTagBg) adminUserTagBg.value = ADMIN_DEFAULT_TAG.bgColor;
       if (adminUserTagText) adminUserTagText.value = ADMIN_DEFAULT_TAG.textColor;
       if (adminUserTagBorder) adminUserTagBorder.value = ADMIN_DEFAULT_TAG.borderColor;
+      syncAllAdminTagPickersFromText();
       updateAdminUserTagPreview();
     });
   }
   [adminUserTagLabel, adminUserTagBg, adminUserTagText, adminUserTagBorder].forEach(function (el) {
     if (!el) return;
-    el.addEventListener("input", updateAdminUserTagPreview);
-    el.addEventListener("change", updateAdminUserTagPreview);
+    el.addEventListener("input", function () {
+      if (el === adminUserTagBg) syncAdminTagPickerFromText(adminUserTagBg, adminUserTagBgPicker);
+      else if (el === adminUserTagText) syncAdminTagPickerFromText(adminUserTagText, adminUserTagTextPicker);
+      else if (el === adminUserTagBorder) syncAdminTagPickerFromText(adminUserTagBorder, adminUserTagBorderPicker);
+      updateAdminUserTagPreview();
+    });
+    el.addEventListener("change", function () {
+      if (el === adminUserTagBg) syncAdminTagPickerFromText(adminUserTagBg, adminUserTagBgPicker);
+      else if (el === adminUserTagText) syncAdminTagPickerFromText(adminUserTagText, adminUserTagTextPicker);
+      else if (el === adminUserTagBorder) syncAdminTagPickerFromText(adminUserTagBorder, adminUserTagBorderPicker);
+      updateAdminUserTagPreview();
+    });
   });
+  if (adminUserTagBgPicker) {
+    adminUserTagBgPicker.addEventListener("input", function () {
+      applyAdminTagPickerToText(adminUserTagBg, adminUserTagBgPicker);
+    });
+  }
+  if (adminUserTagTextPicker) {
+    adminUserTagTextPicker.addEventListener("input", function () {
+      applyAdminTagPickerToText(adminUserTagText, adminUserTagTextPicker);
+    });
+  }
+  if (adminUserTagBorderPicker) {
+    adminUserTagBorderPicker.addEventListener("input", function () {
+      applyAdminTagPickerToText(adminUserTagBorder, adminUserTagBorderPicker);
+    });
+  }
   if (adminUserTagSaveBtn) {
     adminUserTagSaveBtn.addEventListener("click", async function () {
       if (!adminSelectedUser) return;
@@ -1571,6 +1895,7 @@
         if (adminUserTagBg) adminUserTagBg.value = ADMIN_DEFAULT_TAG.bgColor;
         if (adminUserTagText) adminUserTagText.value = ADMIN_DEFAULT_TAG.textColor;
         if (adminUserTagBorder) adminUserTagBorder.value = ADMIN_DEFAULT_TAG.borderColor;
+        syncAllAdminTagPickersFromText();
         updateAdminUserTagPreview();
         setAdminUserProfileMsg("Тег удалён, возвращён fallback.");
       } catch (e) {
@@ -1578,27 +1903,98 @@
       }
     });
   }
-  if (adminUserSkinsSaveBtn) {
-    adminUserSkinsSaveBtn.addEventListener("click", async function () {
+  if (adminUserSkinUpload) {
+    adminUserSkinUpload.addEventListener("change", async function () {
+      if (adminPendingUploadSlot < 0 || !adminUserSkinUpload.files || !adminUserSkinUpload.files[0]) return;
       if (!adminSelectedUser) return;
+      var file = adminUserSkinUpload.files[0];
+      try {
+        await validateAdminSkinImage(file);
+      } catch (err) {
+        setAdminUserProfileMsg(String(err || "Файл не прошёл проверку."), true);
+        adminPendingUploadSlot = -1;
+        adminUserSkinUpload.value = "";
+        return;
+      }
+      setAdminUserProfileMsg("");
+      var fd = new FormData();
+      fd.append("file", file, file.name || "skin.png");
+      var r = await fetch(
+        API_BASE.replace(/\/$/, "") +
+          "/admin/users/" +
+          encodeURIComponent(adminSelectedUser) +
+          "/skins/" +
+          adminPendingUploadSlot,
+        { method: "POST", headers: { Authorization: "Bearer " + token() }, body: fd }
+      );
+      var data = await r.json().catch(function () {
+        return {};
+      });
+      adminPendingUploadSlot = -1;
+      adminUserSkinUpload.value = "";
+      if (!r.ok) {
+        setAdminUserProfileMsg(data.error || "Ошибка " + r.status, true);
+        return;
+      }
+      setAdminUserProfileMsg("Скин загружен.");
+      await loadAdminUserProfile(adminSelectedUser);
+    });
+  }
+  if (adminUserSkinApplyBtn) {
+    adminUserSkinApplyBtn.addEventListener("click", async function () {
+      if (!adminSelectedUser || adminSelectedSkinSlot < 0) return;
+      var slot = adminSkinSlots[adminSelectedSkinSlot];
+      if (!slot || !slot.filled) return;
       setAdminUserProfileMsg("");
       try {
-        var clearSlots = Object.keys(adminPendingClearSlots)
-          .map(function (k) {
-            return Number(k);
-          })
-          .filter(function (n) {
-            return Number.isInteger(n) && n >= 0 && n <= 5 && adminPendingClearSlots[n];
-          });
         await apiJson("PATCH", "/admin/users/" + encodeURIComponent(adminSelectedUser) + "/skin-slots", {
-          activeSkinSlot: adminPendingActiveSkinSlot,
-          clearSlots: clearSlots,
+          activeSkinSlot: adminSelectedSkinSlot,
         });
-        setAdminUserProfileMsg("Skin slots обновлены.");
-        await loadAdminUserProfile(adminSelectedUser);
+        adminServerActiveSlot = adminSelectedSkinSlot;
+        setAdminUserProfileMsg("Активный слот обновлён.");
+        renderAdminUserSkinGrid();
+        applyAdminSkinPreview();
+        syncAdminSkinActionButtons();
       } catch (e) {
         setAdminUserProfileMsg(e.message || String(e), true);
       }
+    });
+  }
+  if (adminUserSkinReplaceBtn) {
+    adminUserSkinReplaceBtn.addEventListener("click", function () {
+      if (adminSelectedSkinSlot < 0 || !adminUserSkinUpload) return;
+      adminPendingUploadSlot = adminSelectedSkinSlot;
+      adminUserSkinUpload.value = "";
+      adminUserSkinUpload.click();
+    });
+  }
+  if (adminUserSkinRemoveBtn) {
+    adminUserSkinRemoveBtn.addEventListener("click", async function () {
+      if (!adminSelectedUser || adminSelectedSkinSlot < 0) return;
+      if (countFilledAdminSkins() <= 1) return;
+      if (!confirm("Удалить скин из слота " + (adminSelectedSkinSlot + 1) + "?")) return;
+      setAdminUserProfileMsg("");
+      var r = await fetch(
+        API_BASE.replace(/\/$/, "") +
+          "/admin/users/" +
+          encodeURIComponent(adminSelectedUser) +
+          "/skins/" +
+          adminSelectedSkinSlot,
+        { method: "DELETE", headers: { Authorization: "Bearer " + token() } }
+      );
+      var data = await r.json().catch(function () {
+        return {};
+      });
+      if (r.status === 409) {
+        setAdminUserProfileMsg(data.error || "Нельзя удалить последний скин.", true);
+        return;
+      }
+      if (!r.ok) {
+        setAdminUserProfileMsg(data.error || "Ошибка " + r.status, true);
+        return;
+      }
+      setAdminUserProfileMsg("Скин удалён.");
+      await loadAdminUserProfile(adminSelectedUser);
     });
   }
   launcherForm.addEventListener("submit", async function (e) {
@@ -1769,6 +2165,13 @@
     fd.append("meta3", serverMeta3.value.trim());
     if (serverMcHost) fd.append("mcHost", serverMcHost.value.trim());
     if (serverMcPort) fd.append("mcPort", String(serverMcPort.value || "").trim());
+    var deliveryRadio = document.querySelector('input[name="clientDelivery"]:checked');
+    fd.append("clientDelivery", deliveryRadio && deliveryRadio.value ? deliveryRadio.value : "manifest");
+    if (serverClientZipUrl) fd.append("clientZipUrl", serverClientZipUrl.value.trim());
+    if (serverClientZipSha256) fd.append("clientZipSha256", serverClientZipSha256.value.trim());
+    if (serverUseManifestFallback) {
+      fd.append("useManifestFallback", serverUseManifestFallback.checked ? "true" : "false");
+    }
     if (serverManifestUrl) fd.append("manifestUrl", serverManifestUrl.value.trim());
     if (serverManifestMirrors) fd.append("manifestMirrors", serverManifestMirrors.value || "");
     if (serverSyncStrict) fd.append("syncMode", serverSyncStrict.checked ? "strict" : "soft");
